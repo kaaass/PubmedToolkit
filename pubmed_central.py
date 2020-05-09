@@ -4,7 +4,7 @@ import json
 import requests
 import logging as log
 import traceback
-from typing import List
+from typing import List, Tuple
 import argparse as arg
 from lxml import etree
 from fake_useragent import UserAgent
@@ -162,6 +162,8 @@ def parse_arguments():
                         help='output directory')
     parser.add_argument('--resume', dest='resume', action='store_true',
                         help='Allow resume from an exist lock file')
+    parser.add_argument('--retry', dest='retry', action='store_true',
+                        help='Retry the tasks in the failed file')
     parser.add_argument('--use-proxy', dest='use_proxy', action='store_true',
                         help='Use proxy pool to access Pubmed Central')
     # Parse
@@ -199,11 +201,17 @@ def load_source(args) -> List[int]:
     """
     Load pmid source
     """
+    global PMID_SOURCE
+
+    # Retry from failed file
+    if args.retry:
+        PMID_SOURCE = FAILEDFILE
+        return load_source_file()
+
     if not args.source:
         log.error("No PMIDs or source file given!")
         quit()
 
-    global PMID_SOURCE
     try:
         source = [int(x) for x in args.source]
         PMID_SOURCE = str(source)
@@ -214,7 +222,7 @@ def load_source(args) -> List[int]:
         return load_source_file()
 
 
-def resume_from_lock(source: List[int], resume=False) -> int:
+def resume_from_lock(source: List[int], resume=False) -> Tuple[int, List[int]]:
     # Check lock
     if os.path.exists(LOCKFILE):
         if not resume:
@@ -230,20 +238,24 @@ def resume_from_lock(source: List[int], resume=False) -> int:
                 raise Exception()
             if lock['length'] != len(source):
                 raise Exception()
-            return lock['progress']
+            failed = []
+            if 'failed' in lock and isinstance(lock['failed'], list):
+                failed = [int(x) for x in lock['failed']]
+            return int(lock['progress']), failed
         except Exception:
             log.info("Invalid lock, probably from an old task, ignored.")
     # Create lock
     update_lock(source, 0)
     log.info("Create lock file %s", LOCKFILE)
-    return 0
+    return 0, []
 
 
-def update_lock(source, progress=0):
+def update_lock(source, progress=0, failed=[]):
     lock = {
         'source': PMID_SOURCE,
         'length': len(source),
-        'progress': progress
+        'progress': progress,
+        'failed': failed
     }
     try:
         with open(LOCKFILE, 'w') as f:
@@ -266,7 +278,8 @@ def save_failed(failed):
     except Exception as e:
         log.error("Unable to write failed file! %s", e)
         quit()
-    log.info("Save failed file to %s!", FAILEDFILE)
+    log.warning("Save failed file to %s!", FAILEDFILE)
+    log.warning("Using --retry to retry the tasks in the failed file.")
 
 
 if __name__ == "__main__":
@@ -275,10 +288,9 @@ if __name__ == "__main__":
     source = load_source(args)
     # Start downloading
     total = len(source)
-    start_at = resume_from_lock(source, resume=args.resume)
-    failed = []
+    start_at, failed = resume_from_lock(source, resume=args.resume)
     for idx in range(start_at, total):
-        update_lock(source, idx)
+        update_lock(source, idx, failed)
         if download_pmc(source[idx]):
             pass
         else:

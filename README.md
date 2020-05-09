@@ -27,7 +27,7 @@ Download PDF from pubmed central by PMIDs or PMID Source File. See "PMID Source 
 ### Usage
 
 ```
-usage: pubmed_central.py [-h] [-o OUTPUT_DIR] [--resume] [--use-proxy]
+usage: pubmed_central.py [-h] [-o OUTPUT_DIR] [--resume] [--retry] [--use-proxy]
                          [PMIDs or PMID source file [PMIDs or PMID source file ...]]
 
 Download PDFs from pubmed central by PMIDs
@@ -41,6 +41,7 @@ optional arguments:
   -o OUTPUT_DIR, --output-dir OUTPUT_DIR
                         output directory
   --resume              Allow resume from an exist lock file
+  --retry               Retry the tasks in the failed file
   --use-proxy           Use proxy pool to access Pubmed Central
 ```
 
