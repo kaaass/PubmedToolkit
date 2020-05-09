@@ -1,19 +1,21 @@
 # Pubmed Toolkit
-A bundle of scripts searching, downloading, and analyzing from Pubmed.
+A bundle of python scripts searching, downloading pdf, and analyzing from Pubmed.
 
-## Install
+## Installation
 
-1. Install the dependency using pip
+Before installation, ensure that you had installed the Python 3 and Pip tool.
 
-```bash
-pip install -r requirements.txt
-```
-
-2. Clone the repository
+1. Clone the repository
 
 ```bash
 git clone https://github.com/kaaass/PubmedToolkit.git
 cd PubmedToolkit
+```
+
+2. Install the dependency using pip
+
+```bash
+pip install -r requirements.txt
 ```
 
 ## pubmed_central.py
