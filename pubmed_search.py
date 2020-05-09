@@ -1,7 +1,7 @@
 from pymed import PubMed
 import json
 
-pubmed = PubMed(tool="PubmedSearch", email="admin@kaaass.net")
+pubmed = PubMed(tool="PubmedToolkit", email="admin@kaaass.net")
 
 start = '2013/01/01'
 end = '2017/01/01'
