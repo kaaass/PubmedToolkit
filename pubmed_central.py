@@ -32,7 +32,7 @@ def get_proxy():
 
 
 def delete_proxy(proxy):
-    requests.get("{}/get/delete/?proxy={}".format(PROXY_POOL_BASE, proxy))
+    requests.get('{}/get/delete/?proxy={}'.format(PROXY_POOL_BASE, proxy))
 
 
 def get_html(url, use_proxy=USE_PROXY):
@@ -42,8 +42,8 @@ def get_html(url, use_proxy=USE_PROXY):
     retry_count = 5
     # Proxy config
     if use_proxy:
-        proxy = get_proxy().get("proxy")
-        proxies = {"http": "http://{}".format(proxy)}
+        proxy = get_proxy().get('proxy')
+        proxies = {'http': 'http://{}'.format(proxy)}
     else:
         proxies = None
     # Headers
@@ -61,7 +61,7 @@ def get_html(url, use_proxy=USE_PROXY):
     if use_proxy:
         delete_proxy(proxy)
     log.warning("Fail to get url: %s, maximum retries count exceed.", url)
-    return None
+    return ''
 
 
 def download(file_path, url, headers=None, proxies=None):
@@ -77,14 +77,14 @@ def download(file_path, url, headers=None, proxies=None):
     # Continue download
     headers['Range'] = 'bytes=%d-' % temp_size
     r = requests.get(url, stream=True, headers=headers, proxies=proxies, **REQUESTS_PARAM)
-    with open(file_path, "ab") as f:
+    with open(file_path, 'ab') as f:
         for chunk in r.iter_content(chunk_size=1024):
             if chunk:
                 temp_size += len(chunk)
                 f.write(chunk)
                 f.flush()
                 done = int(50 * temp_size / total_size)
-                sys.stdout.write("\r[%s%s] %.2f%%" % (
+                sys.stdout.write('\r[%s%s] %.2f%%' % (
                     '=' * done, ' ' * (50 - done), 100 * temp_size / total_size))
                 sys.stdout.flush()
     print()
@@ -95,8 +95,8 @@ def download_to(url, pmid, use_proxy=USE_PROXY):
     filename = f'{OUTPUT_DIR}{pmid}.pdf'
     # Proxy config
     if use_proxy:
-        proxy = get_proxy().get("proxy")
-        proxies = {"http": "http://{}".format(proxy)}
+        proxy = get_proxy().get('proxy')
+        proxies = {'http': 'http://{}'.format(proxy)}
     else:
         proxies = None
     # Headers
@@ -126,8 +126,13 @@ def get_pmc_html(pmid):
 
 
 def download_pmc(pmid):
-    log.info('Start download pdf for pmid %d', pmid)
+    log.info("Start download pdf for pmid %d", pmid)
+    
     response = get_pmc_html(pmid)
+    if not response:
+        log.warning("Failed to retrieve data from sever for pmid %d.", pmid)
+        log.warning("This might be a temporary problem. Use argument --retry for a retry.")
+        return
     html = etree.HTML(response.content)
     pdf_tag = html.xpath('//td[@class="format-menu"]//a[contains(@href,".pdf")]'
                          + '|//div[@class="format-menu"]//a[contains(@href,".pdf")]'
@@ -135,17 +140,17 @@ def download_pmc(pmid):
     if len(pdf_tag) < 1:
         log.warning("No pdf found for pmid %d", pmid)
         return
-    # Download
     pdf_url = pdf_tag[0].attrib['href']
     if pdf_url[0] == '/':
         pdf_url = PDF_BASE + pdf_url
-    log.debug('Successful get pdf url (%s) pmid %d', pdf_url, pmid)
+    log.debug("Successful get pdf url (%s) pmid %d", pdf_url, pmid)
 
+    # Download
     try:
         if not os.path.exists(OUTPUT_DIR):
             os.mkdir(OUTPUT_DIR)
         result = download_to(pdf_url, pmid)
-        log.info('Successful download pdf for pmid %d', pmid)
+        log.info("Successful download pdf for pmid %d", pmid)
         return result
     except Exception as e:
         log.warning("Error in downloading %s for pmid %d", pdf_url, pmid)
