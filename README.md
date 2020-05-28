@@ -102,6 +102,10 @@ Change the parameter `max_results` to specify the maximum number of result.
 
 Run `python pubmed_search.py`, the result will be stored in `data.json`.
 
+## [WIP] pubmed_info.py
+
+Download metadata, figures and extract text from PDFs.
+
 ## Thanks
 
 1. https://github.com/gijswobben/pymed/
