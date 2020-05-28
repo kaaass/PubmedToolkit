@@ -5,11 +5,17 @@ import requests
 import logging as log
 import traceback
 import time
-from typing import List, Tuple, Dict
+import string
 import argparse as arg
+from typing import List, Tuple, Dict
 from lxml import etree
 from fake_useragent import UserAgent
 from bs4 import BeautifulSoup
+from io import StringIO
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.converter import TextConverter
+from pdfminer.layout import LAParams
+from pdfminer.pdfpage import PDFPage
 
 PDF_BASE = 'https://www.ncbi.nlm.nih.gov/'
 USE_PROXY = False
@@ -22,9 +28,9 @@ REQUESTS_PARAM = {
     'timeout': 30
 }
 
-OPTION_BASIC = False
+OPTION_MESH = True
 OPTION_PIC = True
-OPTION_PDF = False
+OPTION_PDF = True
 
 log.basicConfig(level=log.INFO,
                 format='%(asctime)s:%(lineno)d - %(levelname)s: %(message)s')
@@ -45,6 +51,7 @@ def get_proxy(refresh=False):
         except Exception:      
             time.sleep(30)
             get_proxy(refresh=True)
+        fetch_count = 10
     fetch_count += 1
     return cur_proxy
 
@@ -160,18 +167,55 @@ def get_pubmed_html(pmid):
         return None
     return response.content
 
-def download_basic_info(pmid):
-    # TODO: use pymed
+def write_json(data, flilename, type=''):
+    if not os.path.exists(OUTPUT_DIR):
+        os.mkdir(OUTPUT_DIR)
+    filename = os.path.join(OUTPUT_DIR, flilename)
+    try:
+        with open(filename, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        log.error(f"Unable to write {type} result! %s", e)
+        quit()
+
+MESH_RESULT = []
+
+def download_mesh(pubmed_html):
+    try:
+        # Get terms
+        meshes = []
+        soup = BeautifulSoup(pubmed_html, 'html.parser')
+        terms = soup.find(id="mesh-terms")
+        kw_lst = terms.find(class_="keywords-list")
+        for mesh_el in kw_lst.children:
+            mesh = mesh_el.find(class_="keyword-actions-dropdown")['aria-label']
+            if mesh is None:
+                continue
+            if mesh[-1] == '*':
+                meshes.append({
+                    'term': mesh[:-1],
+                    'major': True
+                })
+            else:
+                meshes.append({
+                    'term': mesh,
+                    'major': False
+                })
+    except Exception as e:
+        log.warning("Error in searching mesh for pmid %d", pmid)
+        log.warning("%s\n%s", e, traceback.format_exc())
+        return False
+    # Save
+    MESH_RESULT.append({
+        'pmid': pmid,
+        'mesh': meshes
+    })
+    write_json(MESH_RESULT, 'mesh.json', 'mesh')
     return True
 
 FIGURE_RESULT = []
 
-def download_figure(pmid):
-    pmid = source[idx]['pmid']
-    pubmed_html = get_pubmed_html(pmid)
-    if pubmed_html is None:
-        return False
-    
+def download_figure(pubmed_html):
     # Search for figure
     ret = []
     try:
@@ -207,18 +251,36 @@ def download_figure(pmid):
         'pmid': pmid,
         'figures': ret
     })
-    graph_data = os.path.join(OUTPUT_DIR, 'graph.json')
-    try:
-        with open(graph_data, 'w') as f:
-            json.dump(FIGURE_RESULT, f)
-    except Exception as e:
-        log.error("Unable to write figure result! %s", e)
-        quit()
+    write_json(FIGURE_RESULT, 'graph.json', 'graph')
     return True
 
+EXTRACT_RESULT = []
 
-def extract_text(pdf_path):
-    # TODO
+def extract_text(pmid, pdf_path):
+    try:
+        resourceManager = PDFResourceManager()
+        strIo = StringIO()
+        device = TextConverter(resourceManager, strIo, laparams=LAParams())
+        interpreter = PDFPageInterpreter(resourceManager, device)
+        with open(pdf_path, 'rb') as f:
+            for page in PDFPage.get_pages(f, set()):
+                interpreter.process_page(page)
+            content = strIo.getvalue()
+        device.close()
+        strIo.close()
+        # Write text
+        if not os.path.exists(OUTPUT_DIR):
+            os.mkdir(OUTPUT_DIR)
+        dest_dir = os.path.join(OUTPUT_DIR, 'text/')
+        if not os.path.exists(dest_dir):
+            os.mkdir(dest_dir)
+        filename = os.path.join(dest_dir, f'{pmid}.txt')
+        with open(filename, 'w') as f:
+            f.write(content)
+    except Exception as e:
+        log.warning("Error in extracting text for pmid %s", pdf_path)
+        log.warning("%s\n%s", e, traceback.format_exc())
+        return False
     return True
 
 
@@ -306,6 +368,15 @@ def load_source(args) -> List[int]:
                 FIGURE_RESULT = json.load(f)
         except Exception:
             FIGURE_RESULT = []
+    # Load Mesh cache
+    mesh_data = os.path.join(OUTPUT_DIR, 'mesh.json')
+    if os.path.exists(mesh_data):
+        global MESH_RESULT
+        try:
+            with open(mesh_data, 'r') as f:
+                MESH_RESULT = json.load(f)
+        except Exception:
+            MESH_RESULT = []
 
     PMID_SOURCE = args.source
     return load_source_dir()
@@ -382,16 +453,21 @@ if __name__ == "__main__":
         fail = False
         pmid = source[idx]['pmid']
 
-        if OPTION_BASIC:
-            if not download_basic_info(pmid):
-                fail = True
-        
-        if OPTION_PIC:
-            if not download_figure(pmid):
-                fail = True
+        if OPTION_MESH or OPTION_PIC:
+            pubmed_html = get_pubmed_html(pmid)
+            if pubmed_html is None:
+                fail = False
+            else:
+                if OPTION_MESH:
+                    if not download_mesh(pubmed_html):
+                        fail = True
+                
+                if OPTION_PIC:
+                    if not download_figure(pubmed_html):
+                        fail = True
 
         if OPTION_PDF:
-            if not extract_text(source[idx]['path']):
+            if not extract_text(pmid, source[idx]['path']):
                 fail = True
 
         if fail:
