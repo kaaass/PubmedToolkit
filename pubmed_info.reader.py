@@ -39,7 +39,7 @@ def get_proxy(refresh=False):
         try:
             cur_proxy = requests.get(f"{PROXY_POOL_BASE}/get/").json().get('proxy')
             log.info("Renew proxy %s", cur_proxy)
-        except Exception:      
+        except Exception:
             time.sleep(30)
             get_proxy(refresh=True)
         fetch_count = 10
@@ -166,7 +166,7 @@ def dowload_figure(pmid, html):
     for el_fig in el_figs:
         # get id
         el_anchor = el_fig.find('a', recursive=False)
-        if not el_anchor.has_attr('rid-figpopup'):
+        if el_anchor is None or not el_anchor.has_attr('rid-figpopup'):
             continue
         id = el_anchor['rid-figpopup']
         # get image source
@@ -198,7 +198,9 @@ def dowload_figure(pmid, html):
 
 
 def deal_with_para(el_para):
-    para_id = el_para['id']
+    if el_para is None:
+        return None
+    para_id = el_para['id'] if el_para.has_attr('id') else '<unk>'
     # For figures, use short code schema
     figs = []
     el_figs = el_para.find_all(class_='figpopup')
@@ -242,7 +244,9 @@ def parse_content(html):
         paras = []
         el_paras = el_sec.find_all('p', recursive=False)
         for el_para in el_paras:
-            paras.append(deal_with_para(el_para))
+            para_data = deal_with_para(el_para)
+            if para_data is not None:
+                paras.append(para_data)
         # For subsec
         sub_sec = []
         el_sub_secs = el_sec.find_all(class_="sec", recursive=False)
@@ -267,7 +271,9 @@ def parse_content(html):
             sub_paras = []
             el_paras = el_sub_sec.find_all('p', recursive=False)
             for el_para in el_paras:
-                sub_paras.append(deal_with_para(el_para))
+                para_data = deal_with_para(el_para)
+                if para_data is not None:
+                    sub_paras.append(para_data)
             sub_sec.append({
                 'id': sec_id,
                 'head': sub_head,
