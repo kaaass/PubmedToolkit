@@ -1,6 +1,6 @@
 fake_useragent==0.1.11
 requests==2.23.0
-lxml==4.5.0
+lxml==4.6.2
 pdfminer==20191125
 pymed==0.8.9
 beautifulsoup4==4.9.1
