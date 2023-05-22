@@ -1,5 +1,5 @@
 fake_useragent==0.1.11
-requests==2.23.0
+requests==2.31.0
 lxml==4.6.5
 pdfminer==20191125
 pymed==0.8.9
