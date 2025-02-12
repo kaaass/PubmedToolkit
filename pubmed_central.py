@@ -14,6 +14,7 @@ USE_PROXY = False
 OUTPUT_DIR = 'pmc_pdfs/'
 PROXY_POOL_BASE = 'http://118.24.52.95'
 PMID_SOURCE = ''
+PUBMED_ID_TYPE = ''
 LOCKFILE = 'pubmed_central.lock'
 FAILEDFILE = 'failed.json'
 REQUESTS_PARAM = {
@@ -121,48 +122,57 @@ def download_to(url, pmid, use_proxy=USE_PROXY):
 
 
 def get_pmc_html(pmid):
-    url = f'https://www.ncbi.nlm.nih.gov/pmc/articles/pmid/{pmid}/'
+    if PUBMED_ID_TYPE == 'pmcid':
+        url = f'https://pmc.ncbi.nlm.nih.gov/articles/{pmid}/'
+    else:
+        url = f'https://www.ncbi.nlm.nih.gov/pmc/articles/pmid/{pmid}/'
+
     return get_html(url)
 
 
 def download_pmc(pmid):
-    log.info("Start download pdf for pmid %d", pmid)
-    
+    if pmid.startswith('PMC'):
+        PUBMED_ID_TYPE = 'pmcid'
+        url = f'https://pmc.ncbi.nlm.nih.gov/articles/{pmid}/'
+    else:
+        PUBMED_ID_TYPE = 'pmid'
+        url = f'https://www.ncbi.nlm.nih.gov/pmc/articles/pmid/{pmid}/'
+
+    log.info("Start download pdf for %s %s", PUBMED_ID_TYPE, pmid)
+
     response = get_pmc_html(pmid)
     if not response:
-        log.warning("Failed to retrieve data from sever for pmid %d.", pmid)
+        log.warning("Failed to retrieve data from sever for %s %s.", PUBMED_ID_TYPE, pmid)
         log.warning("This might be a temporary problem. Use argument --retry for a retry.")
         return
     html = etree.HTML(response.content)
-    pdf_tag = html.xpath('//td[@class="format-menu"]//a[contains(@href,".pdf")]'
-                         + '|//div[@class="format-menu"]//a[contains(@href,".pdf")]'
-                         + '|//aside[@id="jr-alt-p"]/div/a[contains(@href,".pdf")]')
+    pdf_tag = html.xpath('//*[@id="article-container"]/div[2]/section/div/section/ul/li/a[@data-ga-label="pdf_download_desktop"]')
     if len(pdf_tag) < 1:
-        log.warning("No pdf found for pmid %d", pmid)
+        log.warning("No pdf found for %s %s", PUBMED_ID_TYPE, pmid)
         return
     pdf_url = pdf_tag[0].attrib['href']
-    if pdf_url[0] == '/':
-        pdf_url = PDF_BASE + pdf_url
-    log.debug("Successful get pdf url (%s) pmid %d", pdf_url, pmid)
+    if not pdf_url.startswith('http'):
+        pdf_url = response.url + pdf_url
+    log.debug("Successful get pdf url (%s) %s %s", pdf_url, PUBMED_ID_TYPE, pmid)
 
     # Download
     try:
         if not os.path.exists(OUTPUT_DIR):
             os.mkdir(OUTPUT_DIR)
         result = download_to(pdf_url, pmid)
-        log.info("Successful download pdf for pmid %d", pmid)
+        log.info("Successful download pdf for %s %s", PUBMED_ID_TYPE, pmid)
         return result
     except Exception as e:
-        log.warning("Error in downloading %s for pmid %d", pdf_url, pmid)
+        log.warning("Error in downloading %s for %s %s", pdf_url, PUBMED_ID_TYPE, pmid)
         log.warning("%s\n%s", e, traceback.format_exc())
         return False
 
 
 def parse_arguments():
     parser = arg.ArgumentParser(
-        description='Download PDFs from pubmed central by PMIDs')
-    parser.add_argument(dest='source', metavar='PMIDs or PMID source file',
-                        nargs='*', help='PMIDs to download, or filepath of PMID source file.')
+        description='Download PDFs from pubmed central by PMIDs and PMCIDs')
+    parser.add_argument(dest='source', metavar='PMIDs/PMCIDs or PMID/PMCID source file',
+                        nargs='*', help='PMIDs/PMCIDs to download, or filepath of PMID/PMCID source file.')
     parser.add_argument('-o', '--output-dir', dest='output_dir', action='store',
                         help='output directory')
     parser.add_argument('--resume', dest='resume', action='store_true',
@@ -190,7 +200,10 @@ def load_source_file() -> List[int]:
     # Read
     try:
         with open(PMID_SOURCE, 'r') as f:
-            data = json.load(f)
+            if PMID_SOURCE.lower().endswith('.json'):
+                data = json.load(f)
+            else:
+                return [line.rstrip() for line in f]
     except Exception as e:
         log.error("Unable to load source file %s! %s", PMID_SOURCE, e)
         quit()
@@ -214,7 +227,7 @@ def load_source(args) -> List[int]:
         return load_source_file()
 
     if not args.source:
-        log.error("No PMIDs or source file given!")
+        log.error("No PMIDs/PMCIDs or source file given!")
         quit()
 
     try:
@@ -289,7 +302,7 @@ def save_failed(failed):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    # Load PMID soruce
+    # Load PMID source
     source = load_source(args)
     # Start downloading
     total = len(source)
@@ -305,7 +318,7 @@ if __name__ == "__main__":
     log.info('Completely download %d PDFs, failed %d',
              total - failed_count, failed_count)
     if failed_count > 0:
-        log.warning('Failed to fetch PMIDs: %s%s',
+        log.warning('Failed to fetch IDs: %s%s',
                     ', '.join(map(str, failed[:5])),
                     ' and more...' if failed_count > 5 else '')
         save_failed(failed)
