@@ -146,7 +146,10 @@ def download_pmc(pmid):
         log.warning("This might be a temporary problem. Use argument --retry for a retry.")
         return
     html = etree.HTML(response.content)
-    pdf_tag = html.xpath('//*[@id="article-container"]/div[2]/section/div/section/ul/li/a[@data-ga-label="pdf_download_desktop"]')
+    pdf_tag = html.xpath('//td[@class="format-menu"]//a[contains(@href,".pdf")]'
+                         + '|//div[@class="format-menu"]//a[contains(@href,".pdf")]'
+                         + '|//aside[@id="jr-alt-p"]/div/a[contains(@href,".pdf")]'
+                         + '|//*[@id="article-container"]//a[contains(@href,".pdf")][@data-ga-label="pdf_download_desktop"]')
     if len(pdf_tag) < 1:
         log.warning("No pdf found for %s %s", PUBMED_ID_TYPE, pmid)
         return
